@@ -12,13 +12,13 @@ import (
 )
 
 func main() {
-	path := flag.String("c", TgMXIDConf.PATH, "path to your configuration "+
+	path := flag.String("c", maConf.PATH, "path to your configuration "+
 		"file (will be created if not exists)")
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "mahou ", log.LstdFlags)
+	logger := log.New(os.Stdout, " mahou ", log.LstdFlags)
 	logger.Printf("v%v is booting up! https://github.com/26000/mahou\n",
-		TgMXIDConf.VERSION)
+		maConf.VERSION)
 
 	if !fileExists(*path) {
 		err := os.MkdirAll(filepath.Dir(*path), os.FileMode(0700))
@@ -27,7 +27,7 @@ func main() {
 				"directory: %v\n", err)
 		}
 
-		err = TgMXIDConf.PopulateConfig(*path)
+		err = maConf.PopulateConfig(*path)
 		if err != nil {
 			logger.Fatalf("could not create a configuration file: "+
 				"%v\n", err)
@@ -46,7 +46,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-	go matrix.Launch(conf, *path)
+	go matrix.Launch(conf, &wg)
 	wg.Wait()
 }
 
