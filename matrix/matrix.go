@@ -108,6 +108,18 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		mxLogger.Println("incoming message: ", ev)
 	})
 
+	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
+		if *ev.StateKey == conf.Login.UserID {
+			mxLogger.Printf("trying to join room %v (invited by %v)\n",
+				ev.RoomID, ev.Sender)
+			_, err := mx.JoinRoom(ev.RoomID, "", nil)
+			if err != nil {
+				mxLogger.Printf("unable to join room: %v\n",
+					err)
+			}
+		}
+	})
+
 	wg.Add(1)
 	go func(mx *gomatrix.Client, mxLogger *log.Logger) {
 		for {
