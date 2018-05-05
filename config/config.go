@@ -2,7 +2,6 @@
 package maConf
 
 import (
-	"errors"
 	"io/ioutil"
 	"os"
 
@@ -21,7 +20,7 @@ const (
 func ReadConfig(path string) (*Config, error) {
 	cfg, err := ini.InsensitiveLoad(path)
 
-	conf := Config{path: path}
+	conf := &Config{path: path}
 	conf.Login, conf.Prefs = new(Login), new(Preferences)
 
 	err = cfg.Section("login").MapTo(conf.Login)
@@ -76,7 +75,7 @@ type Config struct {
 // localpart and password.
 func (conf *Config) UpdateCredentials(userID string, accessToken string,
 	homeServer string) error {
-	cfg, err := ini.InsensitiveLoad(path)
+	cfg, err := ini.InsensitiveLoad(conf.path)
 	if err != nil {
 		return err
 	}
