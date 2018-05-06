@@ -100,7 +100,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		}
 	}
 
-	sendCh := make(chan messageEvent, 1000)
+	sendCh := make(chan event, 1000)
 	go sendEvents(sendCh, mx, mxLogger)
 
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
@@ -133,19 +133,29 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 // queueText sends a text message to the event queue to be sent in
 // chronological order.
-func queueText(sendCh chan messageEvent, room, text string) {
-	sendCh <- messageEvent{room, "m.room.message",
-		gomatrix.TextMessage{"m.text", text}}
+func queueText(sendCh chan event, room, text string) {
+	sendCh <- event{
+		RoomID:  room,
+		Type:    "m.room.message",
+		Content: gomatrix.TextMessage{MsgType: "m.text", Body: text}}
 }
 
-// sendEvents tries to send messageEvents from sendCh, retrying with time
+// sendEvents tries to send events from sendCh, retrying with time
 // increasing exponentially on fails. It also preserves the chronological order.
 // TODO: redact token from the errorlogs.
-func sendEvents(sendCh chan messageEvent, mx *gomatrix.Client,
+func sendEvents(sendCh chan event, mx *gomatrix.Client,
 	logger *log.Logger) {
 	for message := range sendCh {
-		_, err := mx.SendMessageEvent(message.RoomID, message.Type,
-			message.Content)
+		var err error
+
+		if message.StateKey == "" {
+			_, err = mx.SendMessageEvent(message.RoomID,
+				message.Type, message.Content)
+		} else {
+			_, err = mx.SendStateEvent(message.RoomID, message.Type,
+				message.StateKey, message.Content)
+		}
+
 		if err == nil {
 			continue
 		}
@@ -160,8 +170,14 @@ func sendEvents(sendCh chan messageEvent, mx *gomatrix.Client,
 			logger.Printf("%v, retrying in %v seconds...\n",
 				err, delay)
 			time.Sleep(time.Duration(delay) * time.Second)
-			_, err = mx.SendMessageEvent(message.RoomID,
-				message.Type, message.Content)
+			if message.StateKey == "" {
+				_, err = mx.SendMessageEvent(message.RoomID,
+					message.Type, message.Content)
+			} else {
+				_, err = mx.SendStateEvent(message.RoomID,
+					message.Type, message.StateKey,
+					message.Content)
+			}
 		}
 
 		if err != nil {
@@ -190,9 +206,10 @@ func errorRetriable(err error) bool {
 	return true
 }
 
-// messageEvent describes an event to be sent when network is available.
-type messageEvent struct {
-	RoomID  string
-	Type    string
-	Content interface{}
+// event describes an event to be sent when network is available.
+type event struct {
+	RoomID   string
+	Type     string
+	Content  interface{}
+	StateKey string
 }
