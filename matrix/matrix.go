@@ -108,6 +108,22 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		mxLogger.Println("incoming message: ", ev)
 	})
 
+	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
+		callID, ok := ev.Content["call_id"].(string)
+		if !ok {
+			// TODO logme
+			return
+		}
+
+		mxLogger.Printf("rejecting voice %v from %v\n", callID,
+			ev.Sender)
+		sendCh <- event{ev.RoomID, "m.call.hangup", struct {
+			CallID  string `json:"call_id"`
+			Version int    `json:"version"`
+		}{callID, 0}, "",
+		}
+	})
+
 	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
 		if *ev.StateKey == conf.Login.UserID {
 			mxLogger.Printf("trying to join room %v (invited by %v)\n",
