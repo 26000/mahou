@@ -60,8 +60,8 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var err error
-	mxLogger := log.New(os.Stdout, "Matrix ", log.LstdFlags)
-	wrLogger := log.New(os.Stdout, "WebRTC ", log.LstdFlags)
+	mLogger := log.New(os.Stdout, "Matrix ", log.LstdFlags)
+	wLogger := log.New(os.Stdout, "WebRTC ", log.LstdFlags)
 	uLogger := log.New(os.Stdout, "utils  ", log.LstdFlags)
 	//dbLogger := log.New(os.Stdout, "LevelDB", log.LstdFlags)
 
@@ -76,15 +76,15 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	if conf.Login.Password != "" {
 		mx, err = Login(conf.Login)
 		if err != nil {
-			mxLogger.Fatalf("could not log in: %v\n", err)
+			mLogger.Fatalf("could not log in: %v\n", err)
 		}
 
-		mxLogger.Println("got an access token, writing the config")
+		mLogger.Println("got an access token, writing the config")
 		conf.UpdateCredentials(mx.UserID, mx.AccessToken,
 			conf.Login.HomeServer)
-		mxLogger.Println("config updated, password redacted")
+		mLogger.Println("config updated, password redacted")
 	} else {
-		mxLogger.Println("no password supplied, trying access token...")
+		mLogger.Println("no password supplied, trying access token...")
 
 		// for requests being resent to not be sent twice.
 		var trans http.RoundTripper = &http.Transport{
@@ -100,16 +100,16 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 				Transport: trans,
 			})
 		if err != nil {
-			mxLogger.Fatalf("could not log in: %v\n", err)
+			mLogger.Fatalf("could not log in: %v\n", err)
 		}
 	}
 
 	sendCh := make(chan event, 1000)
-	go sendEvents(sendCh, mx, mxLogger)
+	go sendEvents(sendCh, mx, mLogger)
 
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
 	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
-		mxLogger.Println("incoming message: ", ev)
+		mLogger.Println("incoming message: ", ev)
 	})
 
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
@@ -129,29 +129,29 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		}
 		sdp := offer["sdp"].(string)
 
-		wrLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
+		wLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
 		parsedSDP := webrtc.DeserializeSessionDescription(sdp)
 		if parsedSDP == nil {
-			wrLogger.Println("SDP was nil")
+			wLogger.Println("SDP was nil")
 			return
 		}
 
 		pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
 		if err != nil {
-			wrLogger.Println(err)
+			wLogger.Println(err)
 			return
 		}
 
 		err = pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
-			wrLogger.Printf("failed to set remote description: "+
+			wLogger.Printf("failed to set remote description: "+
 				"%v\n", err)
 			return
 		}
 
 		ans, err := pc.CreateAnswer()
 		if err != nil {
-			wrLogger.Printf("failed to generate answer: %v\n", err)
+			wLogger.Printf("failed to generate answer: %v\n", err)
 			return
 		}
 
@@ -162,7 +162,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
 		}
 
-		mxLogger.Printf("accepting call %v from %v\n", callID,
+		mLogger.Printf("accepting call %v from %v\n", callID,
 			ev.Sender)
 		sendCh <- event{ev.RoomID, "m.call.answer", struct {
 			CallID  string `json:"call_id"`
@@ -173,30 +173,30 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	})
 
 	syncer.OnEventType("m.call.candidates", func(ev *gomatrix.Event) {
-		mxLogger.Println(ev.Content)
+		mLogger.Println(ev.Content)
 	})
 
 	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
 		if *ev.StateKey == conf.Login.UserID {
-			mxLogger.Printf("trying to join room %v (invited by %v)\n",
+			mLogger.Printf("trying to join room %v (invited by %v)\n",
 				ev.RoomID, ev.Sender)
 			_, err := mx.JoinRoom(ev.RoomID, "", nil)
 			if err != nil {
-				mxLogger.Printf("unable to join room: %v\n",
+				mLogger.Printf("unable to join room: %v\n",
 					err)
 			}
 		}
 	})
 
 	wg.Add(1)
-	go func(mx *gomatrix.Client, mxLogger *log.Logger) {
+	go func(mx *gomatrix.Client, mLogger *log.Logger) {
 		for {
 			if err := mx.Sync(); err != nil {
-				mxLogger.Printf("failed to sync: %v\n", err)
+				mLogger.Printf("failed to sync: %v\n", err)
 				time.Sleep(time.Duration(4) * time.Second)
 			}
 		}
-	}(mx, mxLogger)
+	}(mx, mLogger)
 }
 
 // queueText sends a text message to the event queue to be sent in
