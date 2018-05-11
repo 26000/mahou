@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	// TODO: replace with keroserene/go-webrtc when it's merged with audio
+	"github.com/26000/go-webrtc"
 	"github.com/26000/gomatrix"
 	"github.com/26000/mahou/config"
 	// "github.com/syndtr/goleveldb/leveldb"
@@ -59,6 +61,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 	var err error
 	mxLogger := log.New(os.Stdout, "Matrix ", log.LstdFlags)
+	wrLogger := log.New(os.Stdout, "WebRTC ", log.LstdFlags)
 	//dbLogger := log.New(os.Stdout, "LevelDB", log.LstdFlags)
 
 	//db, err := leveldb.OpenFile(pack.Config.Bridge.DB, nil)
@@ -115,13 +118,56 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			return
 		}
 
-		mxLogger.Printf("rejecting voice %v from %v\n", callID,
-			ev.Sender)
-		sendCh <- event{ev.RoomID, "m.call.hangup", struct {
-			CallID  string `json:"call_id"`
-			Version int    `json:"version"`
-		}{callID, 0}, "",
+		offer, ok := ev.Content["offer"].(string)
+		if !ok {
+			// TODO logme
+			return
 		}
+		sdp, ok := offer["sdp"].(string)
+		if !ok {
+			// TODO logme
+			return
+		}
+		wrLogger.Printf("SDP from %v is %v\n", sdp, ev.Sender)
+		parsedSDP := webrtc.DeserializeSessionDescription(sdp)
+		if parsedSDP == nil {
+			wrLogger.Println("SDP was nil")
+			return
+		}
+
+		pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
+		if err != nil {
+			wrLogger.Println(err)
+			return
+		}
+
+		err := pc.SetRemoteDescription(parsedSDP)
+		if err != nil {
+			wrLogger.Printf("failed to set remote description: "+
+				"%v\n", err)
+			return
+		}
+
+		answer, err := pc.CreateAnswer()
+		if err != nil {
+			wrLogger.Printf("failed to generate answer: %v\n", err)
+			return
+		}
+
+		pc.SetLocalDescription(asnwer)
+
+		mxLogger.Printf("accepting call %v from %v\n", callID,
+			ev.Sender)
+		sendCh <- event{ev.RoomID, "m.call.answer", struct {
+			CallID  string `json:"call_id"`
+			Answer  answer `json:"answer"`
+			Version int    `json:"version"`
+		}{callID, answer{"answer", ""}, 0}, "",
+		}
+	})
+
+	syncer.OnEventType("m.call.candidates", func(ev *gomatrix.Event) {
+		mxLogger.Println(ev.Content)
 	})
 
 	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
@@ -228,4 +274,10 @@ type event struct {
 	Type     string
 	Content  interface{}
 	StateKey string
+}
+
+// answer describes a WebRTC call answer.
+type answer struct {
+	Type string `json:"type"`
+	SDP  string `json:"sdp"`
 }
