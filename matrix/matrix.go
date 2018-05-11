@@ -62,6 +62,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	var err error
 	mxLogger := log.New(os.Stdout, "Matrix ", log.LstdFlags)
 	wrLogger := log.New(os.Stdout, "WebRTC ", log.LstdFlags)
+	uLogger := log.New(os.Stdout, "utils  ", log.LstdFlags)
 	//dbLogger := log.New(os.Stdout, "LevelDB", log.LstdFlags)
 
 	//db, err := leveldb.OpenFile(pack.Config.Bridge.DB, nil)
@@ -114,21 +115,21 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
 		callID, ok := ev.Content["call_id"].(string)
 		if !ok {
-			// TODO logme
+			uLogger.Println("failed to map call_id to string")
 			return
 		}
 
-		offer, ok := ev.Content["offer"].(string)
-		if !ok {
-			// TODO logme
+		if ev.Content["offer"] == nil {
 			return
 		}
-		sdp, ok := offer["sdp"].(string)
+
+		offer, ok := ev.Content["offer"].(map[string]interface{})
 		if !ok {
-			// TODO logme
-			return
+			uLogger.Println("failed to map offer to map")
 		}
-		wrLogger.Printf("SDP from %v is %v\n", sdp, ev.Sender)
+		sdp := offer["sdp"].(string)
+
+		wrLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
 		parsedSDP := webrtc.DeserializeSessionDescription(sdp)
 		if parsedSDP == nil {
 			wrLogger.Println("SDP was nil")
@@ -141,20 +142,25 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			return
 		}
 
-		err := pc.SetRemoteDescription(parsedSDP)
+		err = pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
 			wrLogger.Printf("failed to set remote description: "+
 				"%v\n", err)
 			return
 		}
 
-		answer, err := pc.CreateAnswer()
+		ans, err := pc.CreateAnswer()
 		if err != nil {
 			wrLogger.Printf("failed to generate answer: %v\n", err)
 			return
 		}
 
-		pc.SetLocalDescription(asnwer)
+		pc.SetLocalDescription(ans)
+		pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
+			echo := &echo{}
+			r.Track().(*webrtc.AudioTrack).AddSink(echo)
+			pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
+		}
 
 		mxLogger.Printf("accepting call %v from %v\n", callID,
 			ev.Sender)
@@ -162,7 +168,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			CallID  string `json:"call_id"`
 			Answer  answer `json:"answer"`
 			Version int    `json:"version"`
-		}{callID, answer{"answer", ""}, 0}, "",
+		}{callID, answer{"answer", ans.Serialize()}, 0}, "",
 		}
 	})
 
@@ -280,4 +286,32 @@ type event struct {
 type answer struct {
 	Type string `json:"type"`
 	SDP  string `json:"sdp"`
+}
+type echo struct {
+	sync.Mutex
+	sinks []webrtc.AudioSink
+}
+
+func (e *echo) AddAudioSink(s webrtc.AudioSink) {
+	e.Lock()
+	defer e.Unlock()
+	e.sinks = append(e.sinks, s)
+}
+
+func (e *echo) RemoveAudioSink(s webrtc.AudioSink) {
+	e.Lock()
+	defer e.Unlock()
+	for i, s2 := range e.sinks {
+		if s2 == s {
+			e.sinks = append(e.sinks[:i], e.sinks[i+1:]...)
+		}
+	}
+}
+
+func (e *echo) OnAudioData(data [][]float64, sampleRate float64) {
+	e.Lock()
+	defer e.Unlock()
+	for _, s := range e.sinks {
+		s.OnAudioData(data, sampleRate)
+	}
 }
