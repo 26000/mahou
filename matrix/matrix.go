@@ -112,6 +112,12 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		mLogger.Println("incoming message: ", ev)
 	})
 
+	pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
+	if err != nil {
+		wLogger.Println(err)
+		return
+	}
+
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
 		callID, ok := ev.Content["call_id"].(string)
 		if !ok {
@@ -126,17 +132,12 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		offer, ok := ev.Content["offer"].(map[string]interface{})
 		if !ok {
 			uLogger.Println("failed to map offer to map")
+			return
 		}
 		sdp := offer["sdp"].(string)
 
 		wLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
-
-		pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
-		if err != nil {
-			wLogger.Println(err)
-			return
-		}
 
 		err = pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
@@ -170,6 +171,24 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 	syncer.OnEventType("m.call.candidates", func(ev *gomatrix.Event) {
 		mLogger.Println(ev.Content)
+		cands, ok := ev.Content["candidates"].([]interface{})
+		if !ok {
+			uLogger.Println("failed to map ICE candidates to " +
+				"an array of interfaces")
+			return
+		}
+		/// TODO: check all conversions
+		cand := cands[0].(map[string]interface{})
+		sdpMid := cand["sdpMid"].(string)
+		sdpMLineIndex := cand["sdpMLineIndex"].(float64)
+		candidate := cand["candidate"].(string)
+		err := pc.AddIceCandidate(webrtc.IceCandidate{candidate,
+			sdpMid, int(sdpMLineIndex)})
+		if err != nil {
+			wLogger.Printf("failed to add an ICE candidate: %v\n",
+				err)
+		}
+
 	})
 
 	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
