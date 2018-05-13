@@ -14,6 +14,7 @@ import (
 	"github.com/26000/go-webrtc"
 	"github.com/26000/gomatrix"
 	"github.com/26000/mahou/config"
+	// "github.com/faiface/beep/speaker"
 	// "github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -24,6 +25,8 @@ const (
 	// KeepAliveTimeout is how long we keep a keep-alive socket for.
 	KeepAliveTimeout = 5 * time.Second
 )
+
+//var sp := speaker.Init
 
 // Login tries to log into a Matrix account using login and password, returning
 // a Matrix client with an access token set.
@@ -118,6 +121,12 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		return
 	}
 
+	pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
+		echo := &echo{}
+		r.Track().(*webrtc.AudioTrack).AddSink(echo)
+		pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
+	}
+
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
 		callID, ok := ev.Content["call_id"].(string)
 		if !ok {
@@ -153,12 +162,6 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		}
 
 		pc.SetLocalDescription(ans)
-		pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
-			echo := &echo{}
-			r.Track().(*webrtc.AudioTrack).AddSink(echo)
-			pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
-		}
-
 		mLogger.Printf("accepting call %v from %v\n", callID,
 			ev.Sender)
 		sendCh <- event{ev.RoomID, "m.call.answer", struct {
@@ -327,6 +330,6 @@ func (e *echo) OnAudioData(data [][]float64, sampleRate float64) {
 	e.Lock()
 	defer e.Unlock()
 	for _, s := range e.sinks {
-		s.OnAudioData(data, sampleRate)
+		fmt.Println(sampleRate)
 	}
 }
