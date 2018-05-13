@@ -60,9 +60,9 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var err error
-	mLogger := log.New(os.Stdout, "Matrix ", log.LstdFlags)
-	wLogger := log.New(os.Stdout, "WebRTC ", log.LstdFlags)
-	uLogger := log.New(os.Stdout, "utils  ", log.LstdFlags)
+	mLogger := log.New(os.Stdout, "matrix ", log.LstdFlags)
+	wLogger := log.New(os.Stdout, "webRTC ", log.LstdFlags)
+	uLogger := log.New(os.Stdout, " utils ", log.LstdFlags)
 	//dbLogger := log.New(os.Stdout, "LevelDB", log.LstdFlags)
 
 	//db, err := leveldb.OpenFile(pack.Config.Bridge.DB, nil)
@@ -130,11 +130,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		sdp := offer["sdp"].(string)
 
 		wLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
-		parsedSDP := webrtc.DeserializeSessionDescription(sdp)
-		if parsedSDP == nil {
-			wLogger.Println("SDP was nil")
-			return
-		}
+		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
 
 		pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
 		if err != nil {
@@ -168,7 +164,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			CallID  string `json:"call_id"`
 			Answer  answer `json:"answer"`
 			Version int    `json:"version"`
-		}{callID, answer{"answer", ans.Serialize()}, 0}, "",
+		}{callID, answer{"answer", ans.Sdp}, 0}, "",
 		}
 	})
 
