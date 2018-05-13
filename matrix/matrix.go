@@ -330,6 +330,6 @@ func (e *echo) OnAudioData(data [][]float64, sampleRate float64) {
 	e.Lock()
 	defer e.Unlock()
 	for _, s := range e.sinks {
-		fmt.Println(sampleRate)
+		s.OnAudioData(data, sampleRate)
 	}
 }
