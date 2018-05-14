@@ -115,6 +115,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		mLogger.Println("incoming message: ", ev)
 	})
 
+	webrtc.SetLoggingVerbosity(0)
 	pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
 	if err != nil {
 		wLogger.Println(err)
@@ -125,6 +126,22 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		echo := &echo{}
 		r.Track().(*webrtc.AudioTrack).AddSink(echo)
 		pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
+	}
+
+	pc.OnIceCandidateError = func() {
+		wLogger.Println("an ICE candidate error occurred")
+	}
+
+	pc.OnIceConnectionStateChange = func(state webrtc.IceConnectionState) {
+		wLogger.Printf("ICE state is now %v\n", state.String())
+	}
+
+	pc.OnConnectionStateChange = func(state webrtc.PeerConnectionState) {
+		wLogger.Printf("connection state is now %v\n", state.String())
+	}
+
+	pc.OnSignalingStateChange = func(state webrtc.SignalingState) {
+		wLogger.Printf("signaling state is now %v\n", state.String())
 	}
 
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
@@ -145,7 +162,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		}
 		sdp := offer["sdp"].(string)
 
-		wLogger.Printf("SDP from %v is %v\n", ev.Sender, sdp)
+		wLogger.Printf("got SDP from %v\n", ev.Sender)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
 
 		err = pc.SetRemoteDescription(parsedSDP)
@@ -173,7 +190,6 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	})
 
 	syncer.OnEventType("m.call.candidates", func(ev *gomatrix.Event) {
-		mLogger.Println(ev.Content)
 		cands, ok := ev.Content["candidates"].([]interface{})
 		if !ok {
 			uLogger.Println("failed to map ICE candidates to " +
