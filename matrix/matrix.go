@@ -181,15 +181,17 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			return
 		}
 		/// TODO: check all conversions
-		cand := cands[0].(map[string]interface{})
-		sdpMid := cand["sdpMid"].(string)
-		sdpMLineIndex := cand["sdpMLineIndex"].(float64)
-		candidate := cand["candidate"].(string)
-		err := pc.AddIceCandidate(webrtc.IceCandidate{candidate,
-			sdpMid, int(sdpMLineIndex)})
-		if err != nil {
-			wLogger.Printf("failed to add an ICE candidate: %v\n",
-				err)
+		for _, candCoded := range cands {
+			cand := candCoded.(map[string]interface{})
+			sdpMid := cand["sdpMid"].(string)
+			sdpMLineIndex := cand["sdpMLineIndex"].(float64)
+			candidate := cand["candidate"].(string)
+			err := pc.AddIceCandidate(webrtc.IceCandidate{candidate,
+				sdpMid, int(sdpMLineIndex)})
+			if err != nil {
+				wLogger.Printf("failed to add an ICE candidate: %v\n",
+					err)
+			}
 		}
 
 	})
