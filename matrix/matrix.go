@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -199,14 +200,30 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		/// TODO: check all conversions
 		for _, candCoded := range cands {
 			cand := candCoded.(map[string]interface{})
+
+			candidate := cand["candidate"].(string)
+
+			// we need a reliable host we could connect to, not
+			// a shady computer behind NAT
+			if strings.Contains(candidate, "host") {
+				wLogger.Printf("dropped %v\n", candidate)
+				continue
+			}
+			// defferent ifs because i could remove one later
+			if strings.Contains(candidate, "srflx") {
+				wLogger.Printf("dropped %v\n", candidate)
+				continue
+			}
+
+			wLogger.Println(candidate)
+
 			sdpMid := cand["sdpMid"].(string)
 			sdpMLineIndex := cand["sdpMLineIndex"].(float64)
-			candidate := cand["candidate"].(string)
 			err := pc.AddIceCandidate(webrtc.IceCandidate{candidate,
 				sdpMid, int(sdpMLineIndex)})
 			if err != nil {
-				wLogger.Printf("failed to add an ICE candidate: %v\n",
-					err)
+				wLogger.Printf("failed to add an ICE "+
+					"candidate: %v\n", err)
 			}
 		}
 
