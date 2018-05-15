@@ -117,7 +117,21 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	})
 
 	webrtc.SetLoggingVerbosity(0)
-	pc, err := webrtc.NewPeerConnection(webrtc.NewConfiguration())
+	wConf := webrtc.NewConfiguration()
+
+	turn, err := mx.TurnServer()
+	if err != nil {
+		// TODO
+	}
+
+	err = wConf.AddIceServer(strings.Join(turn.URIs, ","), turn.Username,
+		turn.Password)
+	if err != nil {
+		// TODO
+		wLogger.Printf("failed to add an ICE server: %v\n", err)
+	}
+
+	pc, err := webrtc.NewPeerConnection(wConf)
 	if err != nil {
 		wLogger.Println(err)
 		return
