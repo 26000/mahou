@@ -112,9 +112,6 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	go sendEvents(sendCh, mx, mLogger)
 
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
-	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
-		mLogger.Println("incoming message: ", ev)
-	})
 
 	webrtc.SetLoggingVerbosity(0)
 	wConf := webrtc.NewConfiguration()
@@ -159,6 +156,10 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		wLogger.Printf("signaling state is now %v\n", state.String())
 	}
 
+	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
+		mLogger.Println("incoming message: ", ev)
+	})
+
 	syncer.OnEventType("m.call.invite", func(ev *gomatrix.Event) {
 		callID, ok := ev.Content["call_id"].(string)
 		if !ok {
@@ -176,6 +177,19 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			return
 		}
 		sdp := offer["sdp"].(string)
+		if strings.Contains(sdp, "m=video") {
+			mLogger.Printf("%v videocalled us, rejecting",
+				ev.Sender)
+			sendCh <- event{ev.RoomID, "m.call.hangup", struct {
+				CallID  string `json:"call_id"`
+				Version int    `json:"version"`
+			}{callID, 0}, "",
+			}
+
+			queueText(sendCh, ev.RoomID, "Sorry, videocalls "+
+				"aren't supported yet!")
+			return
+		}
 
 		wLogger.Printf("got SDP from %v\n", ev.Sender)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
