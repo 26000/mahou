@@ -133,9 +133,6 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 	// setup PeerConnections
 
-	// searchq
-	//wLogger.Printf("failed to create a PeerConnection: %v\n", err)
-
 	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
 		mLogger.Println("incoming message: ", ev)
 	})
@@ -174,23 +171,29 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		wLogger.Printf("got SDP from %v\n", ev.Sender)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
 
-		//if calls[callID] == nil {
-		//call
+		if calls[callID] == nil {
+			pc, err := setupPC(wConf, wLogger)
+			if err != nil {
+				wLogger.Printf("failed to create a PeerConnection: %v\n", err)
+				return
+			}
+			calls[callID] = call{pc}
+		}
 
-		err = pc.SetRemoteDescription(parsedSDP)
+		err = calls[callID].pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
 			wLogger.Printf("failed to set remote description: "+
 				"%v\n", err)
 			return
 		}
 
-		ans, err := pc.CreateAnswer()
+		ans, err := calls[callID].pc.CreateAnswer()
 		if err != nil {
 			wLogger.Printf("failed to generate answer: %v\n", err)
 			return
 		}
 
-		pc.SetLocalDescription(ans)
+		calls[callID].pc.SetLocalDescription(ans)
 		mLogger.Printf("accepting call %v from %v\n", callID,
 			ev.Sender)
 		sendCh <- event{ev.RoomID, "m.call.answer", struct {
@@ -208,6 +211,13 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 				"an array of interfaces")
 			return
 		}
+
+		callID, ok := ev.Content["call_id"].(string)
+		if !ok {
+			uLogger.Println("failed to map call_id to string")
+			return
+		}
+
 		/// TODO: check all conversions
 		for _, candCoded := range cands {
 			cand := candCoded.(map[string]interface{})
@@ -230,7 +240,17 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 			sdpMid := cand["sdpMid"].(string)
 			sdpMLineIndex := cand["sdpMLineIndex"].(float64)
-			err := pc.AddIceCandidate(webrtc.IceCandidate{candidate,
+
+			if calls[callID] == nil {
+				pc, err := setupPC(wConf, wLogger)
+				if err != nil {
+					wLogger.Printf("failed to create a PeerConnection: %v\n", err)
+					return
+				}
+				calls[callID] = call{pc}
+			}
+
+			err := calls[callID].pc.AddIceCandidate(webrtc.IceCandidate{candidate,
 				sdpMid, int(sdpMLineIndex)})
 			if err != nil {
 				wLogger.Printf("failed to add an ICE "+
@@ -239,6 +259,8 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		}
 
 	})
+
+	// TODO: close connection on hangup
 
 	syncer.OnEventType("m.room.member", func(ev *gomatrix.Event) {
 		if *ev.StateKey == conf.Login.UserID {
@@ -265,10 +287,10 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 // setupPC creates a new PeerConnection and adds the needed callbacks.
 func setupPC(wConf *webrtc.Configuration, wLogger *log.Logger) (
-	pc *webrtc.PeerConnection, err error) {
-	pc, err = webrtc.NewPeerConnection(wConf)
+	*webrtc.PeerConnection, error) {
+	pc, err := webrtc.NewPeerConnection(wConf)
 	if err != nil {
-		return
+		return pc, err
 	}
 
 	pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
@@ -292,6 +314,7 @@ func setupPC(wConf *webrtc.Configuration, wLogger *log.Logger) (
 	pc.OnSignalingStateChange = func(state webrtc.SignalingState) {
 		wLogger.Printf("signaling state is now %v\n", state.String())
 	}
+	return pc, err
 }
 
 // queueText sends a text message to the event queue to be sent in
