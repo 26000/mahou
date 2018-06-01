@@ -88,7 +88,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			conf.Login.HomeServer)
 		mLogger.Println("config updated, password redacted")
 	} else {
-		mLogger.Println("no password supplied, trying access token...")
+		mLogger.Println("no password supplied, trying access token")
 
 		// for requests being resent to not be sent twice.
 		var trans http.RoundTripper = &http.Transport{
@@ -111,6 +111,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	sendCh := make(chan event, 1000)
 	go sendEvents(sendCh, mx, mLogger)
 
+	// TODO: split into another function
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
 
 	webrtc.SetLoggingVerbosity(0)
@@ -118,7 +119,7 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 	turn, err := mx.TurnServer()
 	if err != nil {
-		// TODO
+		mLogger.Printf("failed to get TURN server address: %v\n", err)
 	}
 
 	err = wConf.AddIceServer(strings.Join(turn.URIs, ","), turn.Username,
@@ -128,33 +129,12 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		wLogger.Printf("failed to add an ICE server: %v\n", err)
 	}
 
-	pc, err := webrtc.NewPeerConnection(wConf)
-	if err != nil {
-		wLogger.Println(err)
-		return
-	}
+	var calls map[string]call
 
-	pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
-		echo := &echo{}
-		r.Track().(*webrtc.AudioTrack).AddSink(echo)
-		pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
-	}
+	// setup PeerConnections
 
-	pc.OnIceCandidateError = func() {
-		wLogger.Println("an ICE candidate error occurred")
-	}
-
-	pc.OnIceConnectionStateChange = func(state webrtc.IceConnectionState) {
-		wLogger.Printf("ICE state is now %v\n", state.String())
-	}
-
-	pc.OnConnectionStateChange = func(state webrtc.PeerConnectionState) {
-		wLogger.Printf("connection state is now %v\n", state.String())
-	}
-
-	pc.OnSignalingStateChange = func(state webrtc.SignalingState) {
-		wLogger.Printf("signaling state is now %v\n", state.String())
-	}
+	// searchq
+	//wLogger.Printf("failed to create a PeerConnection: %v\n", err)
 
 	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
 		mLogger.Println("incoming message: ", ev)
@@ -194,6 +174,9 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 		wLogger.Printf("got SDP from %v\n", ev.Sender)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
 
+		//if calls[callID] == nil {
+		//call
+
 		err = pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
 			wLogger.Printf("failed to set remote description: "+
@@ -231,17 +214,17 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 
 			candidate := cand["candidate"].(string)
 
-			// we need a reliable host we could connect to, not
-			// a shady computer behind NAT
-			if strings.Contains(candidate, "host") {
-				wLogger.Printf("dropped %v\n", candidate)
-				continue
-			}
-			// defferent ifs because i could remove one later
-			if strings.Contains(candidate, "srflx") {
-				wLogger.Printf("dropped %v\n", candidate)
-				continue
-			}
+			//// we need a reliable host we could connect to, not
+			//// a shady computer behind NAT
+			//if strings.Contains(candidate, "host") {
+			//wLogger.Printf("dropped %v\n", candidate)
+			//continue
+			//}
+			//// defferent ifs because i could remove one later
+			//if strings.Contains(candidate, "srflx") {
+			//wLogger.Printf("dropped %v\n", candidate)
+			//continue
+			//}
 
 			wLogger.Println(candidate)
 
@@ -278,6 +261,37 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 			}
 		}
 	}(mx, mLogger)
+}
+
+// setupPC creates a new PeerConnection and adds the needed callbacks.
+func setupPC(wConf *webrtc.Configuration, wLogger *log.Logger) (
+	pc *webrtc.PeerConnection, err error) {
+	pc, err = webrtc.NewPeerConnection(wConf)
+	if err != nil {
+		return
+	}
+
+	pc.OnAddTrack = func(r *webrtc.RtpReceiver, s []*webrtc.MediaStream) {
+		echo := &echo{}
+		r.Track().(*webrtc.AudioTrack).AddSink(echo)
+		pc.AddTrack(webrtc.NewAudioTrack("audio-echo", echo), nil)
+	}
+
+	pc.OnIceCandidateError = func() {
+		wLogger.Println("an ICE candidate error occurred")
+	}
+
+	pc.OnIceConnectionStateChange = func(state webrtc.IceConnectionState) {
+		wLogger.Printf("ICE state is now %v\n", state.String())
+	}
+
+	pc.OnConnectionStateChange = func(state webrtc.PeerConnectionState) {
+		wLogger.Printf("connection state is now %v\n", state.String())
+	}
+
+	pc.OnSignalingStateChange = func(state webrtc.SignalingState) {
+		wLogger.Printf("signaling state is now %v\n", state.String())
+	}
 }
 
 // queueText sends a text message to the event queue to be sent in
@@ -368,6 +382,11 @@ type answer struct {
 	Type string `json:"type"`
 	SDP  string `json:"sdp"`
 }
+
+type call struct {
+	pc *webrtc.PeerConnection
+}
+
 type echo struct {
 	sync.Mutex
 	sinks []webrtc.AudioSink
