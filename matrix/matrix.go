@@ -61,8 +61,6 @@ func Login(bot *maConf.Login) (*gomatrix.Client, error) {
 
 // Launch starts the Matrix module. It listens for events and processes them.
 func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
-	defer wg.Done()
-
 	var err error
 	mLogger := log.New(os.Stdout, "matrix ", log.LstdFlags)
 	wLogger := log.New(os.Stdout, "webRTC ", log.LstdFlags)
@@ -111,7 +109,15 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	sendCh := make(chan event, 1000)
 	go sendEvents(sendCh, mx, mLogger)
 
-	// TODO: split into another function
+	setupCallbacks(sendCh, wLogger,
+		mLogger, mx, wg)
+}
+
+// setupCallbacks sets up the callbacks, containing the main bot logic.
+func setupCallbacks(sendCh chan event, wLogger *log.Logger,
+	mLogger *log.Logger, mx *gomatrix.Client, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
 
 	webrtc.SetLoggingVerbosity(0)
