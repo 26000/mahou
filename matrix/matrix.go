@@ -110,12 +110,15 @@ func Launch(conf *maConf.Config, wg *sync.WaitGroup) {
 	go sendEvents(sendCh, mx, mLogger)
 
 	setupCallbacks(sendCh, wLogger,
-		mLogger, mx, wg)
+		mLogger, uLogger, mx, wg, conf)
 }
 
 // setupCallbacks sets up the callbacks, containing the main bot logic.
+// A lot of arguments passed, but i believe that there's no point in packaging
+// them into a struct.
 func setupCallbacks(sendCh chan event, wLogger *log.Logger,
-	mLogger *log.Logger, mx *gomatrix.Client, wg *sync.WaitGroup) {
+	mLogger *log.Logger, uLogger *log.Logger, mx *gomatrix.Client,
+	wg *sync.WaitGroup, conf *maConf.Config) {
 	defer wg.Done()
 
 	syncer := mx.Syncer.(*gomatrix.DefaultSyncer)
@@ -177,7 +180,7 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 		wLogger.Printf("got SDP from %v\n", ev.Sender)
 		parsedSDP := &webrtc.SessionDescription{"offer", sdp}
 
-		if calls[callID] == nil {
+		if _, ok := calls[callID]; !ok {
 			pc, err := setupPC(wConf, wLogger)
 			if err != nil {
 				wLogger.Printf("failed to create a PeerConnection: %v\n", err)
@@ -247,7 +250,7 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 			sdpMid := cand["sdpMid"].(string)
 			sdpMLineIndex := cand["sdpMLineIndex"].(float64)
 
-			if calls[callID] == nil {
+			if _, ok := calls[callID]; !ok {
 				pc, err := setupPC(wConf, wLogger)
 				if err != nil {
 					wLogger.Printf("failed to create a PeerConnection: %v\n", err)
