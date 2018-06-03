@@ -138,7 +138,7 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 		wLogger.Printf("failed to add an ICE server: %v\n", err)
 	}
 
-	var calls map[string]call
+	var calls = make(map[string]*call)
 
 	// setup PeerConnections
 
@@ -186,7 +186,7 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 				wLogger.Printf("failed to create a PeerConnection: %v\n", err)
 				return
 			}
-			calls[callID] = call{pc}
+			calls[callID] = &call{pc}
 		}
 
 		err = calls[callID].pc.SetRemoteDescription(parsedSDP)
@@ -256,7 +256,7 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 					wLogger.Printf("failed to create a PeerConnection: %v\n", err)
 					return
 				}
-				calls[callID] = call{pc}
+				calls[callID] = &call{pc}
 			}
 
 			err := calls[callID].pc.AddIceCandidate(webrtc.IceCandidate{candidate,
