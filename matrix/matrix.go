@@ -227,11 +227,20 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 			return
 		}
 
-		/// TODO: check all conversions
 		for _, candCoded := range cands {
-			cand := candCoded.(map[string]interface{})
+			cand, ok := candCoded.(map[string]interface{})
+			if !ok {
+				uLogger.Println("failed to map ICE candidate " +
+					"an map[string]interface{}")
+				return
+			}
 
-			candidate := cand["candidate"].(string)
+			candidate, ok := cand["candidate"].(string)
+			if !ok {
+				uLogger.Println("failed to map ICE candidate " +
+					"from a map to string")
+				return
+			}
 
 			//// we need a reliable host we could connect to, not
 			//// a shady computer behind NAT
@@ -247,8 +256,19 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 
 			wLogger.Println(candidate)
 
-			sdpMid := cand["sdpMid"].(string)
-			sdpMLineIndex := cand["sdpMLineIndex"].(float64)
+			sdpMid, ok := cand["sdpMid"].(string)
+			if !ok {
+				uLogger.Println("failed to map sdpMid " +
+					"from a map to string")
+				return
+			}
+
+			sdpMLineIndex, ok := cand["sdpMLineIndex"].(float64)
+			if !ok {
+				uLogger.Println("failed to map sdpMLineIndex " +
+					"from a map to string")
+				return
+			}
 
 			if _, ok := calls[callID]; !ok {
 				pc, err := setupPC(wConf, wLogger)
