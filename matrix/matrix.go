@@ -159,7 +159,8 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 
 		offer, ok := ev.Content["offer"].(map[string]interface{})
 		if !ok {
-			uLogger.Println("failed to map offer to map")
+			uLogger.Printf("failed to map offer to map (%v)\n",
+				callID)
 			return
 		}
 		sdp := offer["sdp"].(string)
@@ -183,7 +184,8 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 		if _, ok := calls[callID]; !ok {
 			pc, err := setupPC(wConf, wLogger)
 			if err != nil {
-				wLogger.Printf("failed to create a PeerConnection: %v\n", err)
+				wLogger.Printf("failed to create a "+
+					"PeerConnection (%v): %v\n", callID, err)
 				return
 			}
 			calls[callID] = &call{pc}
@@ -191,14 +193,15 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 
 		err = calls[callID].pc.SetRemoteDescription(parsedSDP)
 		if err != nil {
-			wLogger.Printf("failed to set remote description: "+
-				"%v\n", err)
+			wLogger.Printf("failed to set remote description (%v): "+
+				"%v\n", callID, err)
 			return
 		}
 
 		ans, err := calls[callID].pc.CreateAnswer()
 		if err != nil {
-			wLogger.Printf("failed to generate answer: %v\n", err)
+			wLogger.Printf("failed to generate answer (%v): %v\n",
+				callID, err)
 			return
 		}
 
@@ -230,60 +233,53 @@ func setupCallbacks(sendCh chan event, wLogger *log.Logger,
 		for _, candCoded := range cands {
 			cand, ok := candCoded.(map[string]interface{})
 			if !ok {
-				uLogger.Println("failed to map ICE candidate " +
-					"an map[string]interface{}")
+				uLogger.Printf("failed to map ICE candidate "+
+					"an map[string]interface{} (%v)\n",
+					callID)
 				return
 			}
 
 			candidate, ok := cand["candidate"].(string)
 			if !ok {
-				uLogger.Println("failed to map ICE candidate " +
-					"from a map to string")
+				uLogger.Printf("failed to map ICE candidate "+
+					"from a map to string (%v)\n", callID)
 				return
 			}
 
-			//// we need a reliable host we could connect to, not
-			//// a shady computer behind NAT
-			//if strings.Contains(candidate, "host") {
-			//wLogger.Printf("dropped %v\n", candidate)
-			//continue
-			//}
-			//// defferent ifs because i could remove one later
-			//if strings.Contains(candidate, "srflx") {
-			//wLogger.Printf("dropped %v\n", candidate)
-			//continue
-			//}
-
-			wLogger.Println(candidate)
+			wLogger.Printf("added candidate %v (%v)\n", candidate,
+				callID)
 
 			sdpMid, ok := cand["sdpMid"].(string)
 			if !ok {
-				uLogger.Println("failed to map sdpMid " +
-					"from a map to string")
+				uLogger.Printf("failed to map sdpMid "+
+					"from a map to string (%v)\n", callID)
 				return
 			}
 
 			sdpMLineIndex, ok := cand["sdpMLineIndex"].(float64)
 			if !ok {
-				uLogger.Println("failed to map sdpMLineIndex " +
-					"from a map to string")
+				uLogger.Printf("failed to map sdpMLineIndex "+
+					"from a map to string (%v)\n", callID)
 				return
 			}
 
 			if _, ok := calls[callID]; !ok {
 				pc, err := setupPC(wConf, wLogger)
 				if err != nil {
-					wLogger.Printf("failed to create a PeerConnection: %v\n", err)
+					wLogger.Printf("failed to create a "+
+						"PeerConnection (%v): %v\n",
+						callID, err)
 					return
 				}
 				calls[callID] = &call{pc}
 			}
 
-			err := calls[callID].pc.AddIceCandidate(webrtc.IceCandidate{candidate,
-				sdpMid, int(sdpMLineIndex)})
+			err := calls[callID].pc.AddIceCandidate(
+				webrtc.IceCandidate{candidate, sdpMid,
+					int(sdpMLineIndex)})
 			if err != nil {
 				wLogger.Printf("failed to add an ICE "+
-					"candidate: %v\n", err)
+					"candidate (%v): %v\n", callID, err)
 			}
 		}
 
